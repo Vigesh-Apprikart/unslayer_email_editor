@@ -1,11 +1,11 @@
 import React from 'react';
-import EmailEditorWithTabs from '../components/EmailEditorWithTabs';
+import Editor from '../components/Editor';
 
 function EditorPage() {
   return (
     <div className="App">
       <header className="App-header">
-        <EmailEditorWithTabs />
+        <Editor />
       </header>
     </div>
   );
