@@ -242,18 +242,53 @@ const processTable = (table) => {
             gridCells.push(gridWidth > 0 ? gridWidth : 1);
 
             const cellStyles = extractStyles(td);
+
+            // Logic for Auto-Vertical Centering
+            let calculatedPadding = cellStyles.padding || '10px';
+            const val = cellStyles.verticalAlign || td.getAttribute('valign');
+            const isFlexCenter = cellStyles.display === 'flex' && cellStyles.alignItems === 'center';
+            const valign = isFlexCenter ? 'middle' : (val || 'top'); // map flex align to valign logic
+
+            const tdHeight = parseInt(td.getAttribute('height') || cellStyles.height || '0');
+            let appliedVerticalPadding = false;
+
+            if ((valign === 'middle' || valign === 'bottom') && tdHeight > 0) {
+                const contentHeight = sumExplicitHeights(Array.from(td.childNodes));
+                if (contentHeight > 0 && contentHeight < tdHeight) {
+                    const diff = tdHeight - contentHeight;
+                    const top = valign === 'middle' ? Math.floor(diff / 2) : diff;
+                    const bottom = valign === 'middle' ? Math.ceil(diff / 2) : 0;
+
+                    // Smartly preserve existing padding
+                    const getPx = (v) => parseInt(v) || 0;
+                    const pTop = getPx(cellStyles.paddingTop || cellStyles.padding);
+                    const pBtm = getPx(cellStyles.paddingBottom || cellStyles.padding);
+                    const pLeft = getPx(cellStyles.paddingLeft || cellStyles.padding || '10px'); // default 10px if completely missing
+                    const pRight = getPx(cellStyles.paddingRight || cellStyles.padding || '10px');
+
+                    calculatedPadding = `${top + pTop}px ${pRight}px ${bottom + pBtm}px ${pLeft}px`;
+                    appliedVerticalPadding = true;
+                }
+            }
+
             const column = {
                 contents: [],
                 values: {
                     _width: `${widthPct.toFixed(2)}%`,
-                    padding: cellStyles.padding || '10px',
+                    padding: calculatedPadding,
                     backgroundColor: cellStyles.backgroundColor || td.getAttribute('bgcolor') || 'transparent',
-                    verticalAlign: cellStyles.verticalAlign || td.getAttribute('valign') || 'top',
+                    verticalAlign: appliedVerticalPadding ? 'top' : (valign || 'middle'),
+                    textAlign: cellStyles.textAlign || (cellStyles.display === 'flex' && cellStyles.justifyContent === 'center' ? 'center' : (td.getAttribute('align') || 'center')),
                     borderTop: cellStyles.borderTop,
                     borderBottom: cellStyles.borderBottom,
                     borderLeft: cellStyles.borderLeft,
                     borderRight: cellStyles.borderRight,
-                    borderRadius: cellStyles.borderRadius
+                    borderRadius: cellStyles.borderRadius,
+                    // High Fidelity: Pass through ID and Classes
+                    _meta: {
+                        id: cellStyles._id,
+                        classes: cellStyles._classes
+                    }
                 }
             };
 
@@ -611,7 +646,7 @@ const createSimpleRow = (components) => ({
     cells: [12],
     columns: [{
         contents: components,
-        values: { _width: '100%', padding: '0px' }
+        values: { _width: '100%', padding: '10px' }
     }],
     values: { backgroundColor: 'transparent', padding: '0px' }
 });
@@ -620,3 +655,34 @@ const createPlaceholder = () => ({
     type: 'text',
     values: { text: '<p>&nbsp;</p>', padding: '10px' }
 });
+
+const sumExplicitHeights = (nodes) => {
+    let totalHeight = 0;
+    for (const node of nodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            const style = node.getAttribute('style') || '';
+            let height = 0;
+
+            // Checks for explicit height attribute or style
+            const heightAttr = node.getAttribute('height');
+            const styleHeight = style.match(/height:\s*(\d+)px/i);
+
+            if (heightAttr && /^\d+$/.test(heightAttr)) {
+                height = parseInt(heightAttr);
+            } else if (styleHeight) {
+                height = parseInt(styleHeight[1]);
+            } else if (node.tagName === 'IMG') {
+                return 0;
+            } else if (['DIV', 'TABLE', 'P'].includes(node.tagName)) {
+                const childHeight = sumExplicitHeights(node.childNodes);
+                if (childHeight === 0) return 0;
+                height = childHeight;
+            }
+            totalHeight += height;
+        }
+        else if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
+            return 0;
+        }
+    }
+    return totalHeight;
+};
